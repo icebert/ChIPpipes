@@ -1,2 +1,8 @@
 # ChIPpipes
-Pipelines for ChIP-seq / CUT&amp;RUN / CUT&amp;Tag etc. analysis
+
+Snakemake pipelines for analyzing:
+
+- ChIP-seq
+- CUT&RUN
+- CUT&Tag etc. Tn5-based methods
+

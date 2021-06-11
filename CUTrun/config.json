@@ -1,0 +1,23 @@
+{
+    "samples" :
+    {
+        "mESC_10k_H3K27me3" : ["/n/scratch3/users/m/mw285/CUTRUN/raw/ESC_10k_K27me3_Diagenode_S4_R1_001.fastq.gz",
+                               "/n/scratch3/users/m/mw285/CUTRUN/raw/ESC_10k_K27me3_Diagenode_S4_R2_001.fastq.gz"]
+    },
+    "controls" :
+    {
+    },
+    "workdir" : "/n/scratch3/users/m/mw285/CUTRUN",
+    "type" : "Histone_broad",
+    "minLength" : 35,
+
+    "species" : "mm",
+    "reference_genome" : "/n/groups/zhanglab/meng/reference/GRCm38.fa",
+    "genome_size" : "/n/groups/zhanglab/meng/reference/GRCm38.size",
+    "picard" : "/n/groups/zhanglab/meng/tools/picard/picard.jar",
+    "trim_dir" : "/n/groups/zhanglab/meng/tools/Trimmomatic",
+    "adaptor" : "TruSeq3-PE",
+    "rmdup" : True,
+    "threads" : 8
+}
+

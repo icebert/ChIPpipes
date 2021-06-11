@@ -1,0 +1,24 @@
+{
+    "samples" :
+    {
+        "mESC_rep1" : "/n/scratch3/users/m/mw285/ChIPseq/mESC_rep1/raw/SRR5218784.1.fastq.gz",
+        "mESC_rep2" : "/n/scratch3/users/m/mw285/ChIPseq/mESC_rep2/raw/SRR5218785.1.fastq.gz"
+    },
+    "controls" :
+    {
+        "input" : "/n/scratch3/users/m/mw285/ChIPseq/input/raw/SRR5218796.1.fastq.gz"
+    },
+    "workdir" : "/n/scratch3/users/m/mw285/ChIPseq",
+    "type" : "Histone_broad",
+    "minLength" : 35,
+
+    "species" : "mm",
+    "reference_genome" : "/n/groups/zhanglab/meng/reference/GRCm38.fa",
+    "genome_size" : "/n/groups/zhanglab/meng/reference/GRCm38.size",
+    "picard" : "/n/groups/zhanglab/meng/tools/picard/picard.jar",
+    "trim_dir" : "/n/groups/zhanglab/meng/tools/Trimmomatic",
+    "adaptor" : "TruSeq3-SE",
+    "rmdup" : True,
+    "threads" : 8
+}
+

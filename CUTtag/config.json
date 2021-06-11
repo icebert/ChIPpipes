@@ -1,0 +1,23 @@
+{
+    "samples" :
+    {
+        "mESC_2k" : ["/n/scratch3/users/m/mw285/Tn5/CUTTag/mESC_H3K4me3_CUTTag_2000/raw/SRR11545656_1.fastq.gz",
+                     "/n/scratch3/users/m/mw285/Tn5/CUTTag/mESC_H3K4me3_CUTTag_2000/raw/SRR11545656_2.fastq.gz"]
+    },
+    "controls" :
+    {
+    },
+    "workdir" : "/n/scratch3/users/m/mw285/Tn5/CUTTag/mESC_H3K4me3_CUTTag_2000",
+    "type" : "Histone_narrow",
+    "minLength" : 35,
+
+    "species" : "mm",
+    "reference_genome" : "/n/groups/zhanglab/meng/reference/GRCm38.fa",
+    "genome_size" : "/n/groups/zhanglab/meng/reference/GRCm38.size",
+    "picard" : "/n/groups/zhanglab/meng/tools/picard/picard.jar",
+    "trim_dir" : "/n/groups/zhanglab/meng/tools/Trimmomatic",
+    "adaptor" : "NexteraPE-PE",
+    "rmdup" : True,
+    "threads" : 8
+}
+

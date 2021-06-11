@@ -1,0 +1,211 @@
+configfile: "config.json"
+
+
+rule all:
+    input:
+        fastqc_sample_raw = expand(config["workdir"] + '/{sample}_fastqc_raw', sample=config["samples"]),
+        fastqc_sample_cln = expand(config["workdir"] + '/{sample}_fastqc_clean', sample=config["samples"]),
+        peaks = expand(config["workdir"] + '/{sample}.peaks.bed', sample=config["samples"]),
+        signal = expand(config["workdir"] + '/{sample}.bigwig', sample=config["samples"]),
+        fc = expand(config["workdir"] + '/{sample}.fc.bigwig', sample=config["samples"])
+
+
+rule fastqc_raw:
+    input:
+        fastq = lambda wildcards: config["samples"][wildcards.sample] if wildcards.sample in config["samples"] else config["controls"][wildcards.sample]
+    output:
+        directory(config["workdir"] + '/{sample}_fastqc_raw')
+    threads:
+        config["threads"]
+    shell:
+        """
+        mkdir -p {output}
+        fastqc -o {output} -t {threads} {input}
+        rm -f {output}/*.zip
+        """
+
+
+rule clean_raw_reads:
+    input:
+        fastq = lambda wildcards: config["samples"][wildcards.sample] if wildcards.sample in config["samples"] else config["controls"][wildcards.sample]
+    output:
+        read1 = temp(config["workdir"] + '/{sample}_R1.clean.fq'),
+        read2 = temp(config["workdir"] + '/{sample}_R2.clean.fq')
+    params:
+        trimDir = config["trim_dir"],
+        adaptor = config["adaptor"],
+        minLength = config["minLength"]
+    log:
+        config["workdir"] + '/Log.trim.{sample}'
+    threads:
+        config["threads"]
+    shell:
+        """
+        java -jar {params.trimDir}/trimmomatic.jar PE -threads {threads} \
+                {input} {output.read1} {output.read1}.single {output.read2} {output.read2}.single \
+                ILLUMINACLIP:{params.trimDir}/adapters/{params.adaptor}.fa:2:30:10:1:true LEADING:3 \
+                TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:{params.minLength} TOPHRED33 2>{log} 1>&2
+
+        rm -f {output.read1}.single {output.read2}.single
+        """
+
+
+rule fastqc_clean:
+    input:
+        config["workdir"] + '/{sample}_R1.clean.fq',
+        config["workdir"] + '/{sample}_R2.clean.fq'
+    output:
+        directory(config["workdir"] + '/{sample}_fastqc_clean')
+    threads:
+        config["threads"]
+    shell:
+        """
+        mkdir -p {output}
+        fastqc -o {output} -t {threads} {input}
+        rm -f {output}/*.zip
+        """
+
+
+rule mapping:
+    input:
+        read1 = config["workdir"] + '/{sample}_R1.clean.fq',
+        read2 = config["workdir"] + '/{sample}_R2.clean.fq'
+    output:
+        temp(config["workdir"] + '/{sample}.raw.bam')
+    params:
+        ref = config["reference_genome"]
+    threads:
+        config["threads"]
+    shell:
+        "bowtie2 --local --very-sensitive-local --no-unal --no-mixed --no-discordant --dovetail -I 10 -X 700 "
+        "        --soft-clipped-unmapped-tlen -p {threads} --rg-id {wildcards.sample} --quiet "
+        "        -x {params.ref} -1 {input.read1} -2 {input.read2} | "
+        "samtools view -Sb - > {output}"
+
+
+rule sort_bam_by_qname:
+    input:
+        config["workdir"] + '/{sample}.raw.bam'
+    output:
+        config["workdir"] + '/{sample}.sort.bam'
+    log:
+        config["workdir"] + '/Log.sort.{sample}'
+    params:
+        picard_jar = config["picard"]
+    shell:
+        "java -Xmx16G -XX:ParallelGCThreads=4 -jar {params.picard_jar} SortSam "
+        "    -VALIDATION_STRINGENCY SILENT "
+        "    -SORT_ORDER queryname "
+        "    -INPUT {input} "
+        "    -OUTPUT {output} 2>{log}"
+
+
+rule mark_dups:
+    input:
+        config["workdir"] + '/{sample}.sort.bam'
+    output:
+        bam = config["workdir"] + '/{sample}.markdup.bam',
+        metrics = config["workdir"] + '/markdup.{sample}.metric'
+    log:
+        config["workdir"] + '/Log.markdup.{sample}'
+    params:
+        picard_jar = config["picard"]
+    shell:
+        "java -Xmx16G -XX:ParallelGCThreads=4 -jar {params.picard_jar} MarkDuplicates "
+        "    -VALIDATION_STRINGENCY SILENT "
+        "    -INPUT {input} "
+        "    -OUTPUT {output.bam} "
+        "    -METRICS_FILE {output.metrics} 2>{log}"
+
+
+rule filter_bam:
+    input:
+        config["workdir"] + ('/{sample}.markdup.bam' if config["rmdup"] else '/{sample}.sort.bam')
+    output:
+        temp(config["workdir"] + '/{sample}._filtered_.bam')
+    params:
+        fragLen = '<= 120 && abs($9) >= 10' if config["type"].upper() == "TF" else '>= 140'
+    shell:
+        "cat <( samtools view -H {input} ) <( samtools view -h -q 30 -F 0xF04 {input} | "
+        "samtools fixmate - - | samtools view -f 0x3 - | "
+        "awk 'function abs(x){{return ((x < 0) ? -x : x)}} abs($9) {params.fragLen}' ) | "
+        "samtools view -Sb - > {output}"
+
+
+rule sort_filtered_bam:
+    input:
+        config["workdir"] + '/{sample}._filtered_.bam'
+    output:
+        config["workdir"] + '/{sample}.filtered.bam'
+    threads:
+        config["threads"]
+    shell:
+        """
+        samtools sort -@ {threads} -o {output} {input}
+        samtools index {output}
+        """
+
+
+rule macs2_call_peaks:
+    input:
+        config["workdir"] + '/{sample}.filtered.bam'
+    output:
+        peaks = config["workdir"] + '/{sample}.peaks.bed',
+        bdg_rep = config["workdir"] + '/{sample}_treat_pileup.bdg',
+        bdg_ctl = config["workdir"] + '/{sample}_control_lambda.bdg'
+    log:
+        config["workdir"] + '/Log.macs2.{sample}'
+    params:
+        sample = lambda wildcards: config["workdir"] + '/' + wildcards.sample,
+        species = config["species"],
+        broad = '--broad --broad-cutoff 1e-4' if config["type"].upper() == "HISTONE_BROAD" else ""
+    shell:
+        """
+        macs2 callpeak -t {input} -f BAMPE -n {params.sample} -B --SPMR -p 1e-4 \
+                       -g {params.species} {params.broad} --keep-dup all --scale-to large 2>{log} 1>&2
+        
+        if [ -f {params.sample}_peaks.narrowPeak ]
+        then
+            sort -k8,8nr {params.sample}_peaks.narrowPeak > {output.peaks}
+            rm -f {params.sample}_peaks.narrowPeak {params.sample}_peaks.xls {params.sample}_summits.bed
+        else
+            sort -k8,8nr {params.sample}_peaks.broadPeak > {output.peaks}
+            rm -f {params.sample}_peaks.broadPeak {params.sample}_peaks.xls {params.sample}_summits.bed
+        fi
+        """
+
+
+rule generate_fc_signal_track:
+    input:
+        sample = config["workdir"] + '/{sample}_treat_pileup.bdg',
+        control = config["workdir"] + '/{sample}_control_lambda.bdg'
+    output:
+        config["workdir"] + '/{sample}.fc.bigwig'
+    log:
+        config["workdir"] + '/Log.signal.{sample}'
+    params:
+        genome_size = config["genome_size"]
+    shell:
+        """
+        macs2 bdgcmp -t {input.sample} -c {input.control} -o {output}.bdg -m FE 2>{log} 1>&2
+
+        LC_COLLATE=C sort -k1,1 -k2,2n {output}.bdg > {output}.sorted.bdg
+        rm -f {output}.bdg
+        bedGraphToBigWig {output}.sorted.bdg {params.genome_size} {output}
+        rm -f {output}.sorted.bdg
+        """
+
+
+rule generate_signal_track:
+    input:
+        config["workdir"] + '/{sample}.filtered.bam'
+    output:
+        config["workdir"] + '/{sample}.bigwig'
+    threads:
+        config["threads"]
+    shell:
+        "bamCoverage -b {input} -o {output} --binSize 100 --extendReads --normalizeUsing RPKM --exactScaling -p {threads}"
+
+
+
+
